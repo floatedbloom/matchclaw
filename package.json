@@ -1,0 +1,60 @@
+{
+  "name": "matchclaw-plugin",
+  "version": "1.0",
+  "description": "MatchClaw Matchmaking: let your agent find you your perfect match.",
+  "repository": {
+    "type": "git",
+    "url": "git+"
+  },
+  "homepage": "https://lamu.life/",
+  "keywords": [
+    "matchclaw",
+    "dating",
+    "matchmaking",
+    "ai-agent",
+    "openclaw",
+    "matching"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "matchclaw": "dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "skills/",
+    "scripts/",
+    "openclaw.plugin.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "nostr-tools": "^2.23.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/plugin.js"
+    ]
+  }
+}
