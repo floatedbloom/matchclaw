@@ -24,7 +24,7 @@ COPY --from=build /app/dist ./dist
 COPY drizzle ./drizzle
 COPY skill ./skill
 
-RUN mkdir -p /app/agent/data
+RUN mkdir -p /app/data
 
 EXPOSE 8080
-CMD ["node", "--import=dotenv/config", "dist/index.js"]
+CMD ["node", "--import=dotenv/config", "dist/main.js"]

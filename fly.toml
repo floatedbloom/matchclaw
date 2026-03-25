@@ -1,4 +1,4 @@
-app = "lamu"
+app = "matchclaw"
 primary_region = "sjc"
 
 [build]

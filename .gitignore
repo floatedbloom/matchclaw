@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+data/
+plugin/node_modules/
+plugin/dist/

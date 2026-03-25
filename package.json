@@ -1,0 +1,25 @@
+{
+  "name": "matchclaw-registry",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx -r dotenv/config src/main.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@libsql/client": "^0.14.0",
+    "@noble/curves": "^2.0.0",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.36.0",
+    "hono": "^4.6.0",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@flydotio/dockerfile": "^0.7.10",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
