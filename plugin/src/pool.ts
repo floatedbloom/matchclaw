@@ -14,7 +14,7 @@ function resolveRegistryUrl(): string {
   return (
     process.env["MATCHER_REGISTRY_URL"] ??
     process.env["MATCHCLAW_REGISTRY_URL"] ??
-    "https://lamu.life/api/agent"
+    "https://agent.lamu.life"
   );
 }
 

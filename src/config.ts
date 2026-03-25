@@ -36,7 +36,12 @@ function resolveSkillDocPath(): string {
 }
 
 function resolveCorsOrigins(): string[] {
-  const base = ["https://lamu.life", "https://www.lamu.life", "http://localhost:3000"];
+  const base = [
+    "https://lamu.life",
+    "https://www.lamu.life",
+    "https://agent.lamu.life",
+    "http://localhost:3000",
+  ];
   const extra = (process.env.MATCHCLAW_CORS_ORIGINS ?? "")
     .split(",")
     .map((s) => s.trim())

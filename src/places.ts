@@ -33,7 +33,7 @@ export async function geocode(query: string): Promise<GeoHit | null> {
   try {
     const res = await fetch(url.toString(), {
       headers: {
-        "User-Agent": "MatchClaw/1.0 (https://lamu.life/api/agent)",
+        "User-Agent": "MatchClaw/1.0 (https://agent.lamu.life)",
         Accept: "application/json",
       },
       signal: AbortSignal.timeout(5000),

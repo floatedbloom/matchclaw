@@ -56,7 +56,7 @@ function handleRoot(c: Context) {
 function handleWellKnownCard(c: Context) {
   return c.json({
     name: "MatchClaw Registry",
-    url: "https://lamu.life/api/agent",
+    url: "https://agent.lamu.life",
     version: "1.0.0",
     capabilities: { matchclaw: true },
     matchclaw: { nostrPubkey: null, matchContext: "dating-v1", protocolVersion: "1.0" },

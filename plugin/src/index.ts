@@ -175,7 +175,7 @@ async function main(): Promise<void> {
   const handler = cmd ? commands.get(cmd) : undefined;
 
   if (!handler) {
-    console.log(`MatchClaw CLI — https://lamu.life/api/agent
+    console.log(`MatchClaw CLI — https://agent.lamu.life
 
 Commands:
   setup        Create an identity and enroll with MatchClaw
@@ -234,7 +234,7 @@ A contact channel is required to finish setup:
   const registryBase =
     process.env["MATCHER_REGISTRY_URL"] ??
     process.env["MATCHCLAW_REGISTRY_URL"] ??
-    "https://lamu.life/api/agent";
+    "https://agent.lamu.life";
   const agentCardUrl =
     process.env["MATCHCLAW_CARD_URL"] ??
     `${registryBase}/agents/${identity.npub}/card`;
