@@ -3,7 +3,7 @@
  * focus areas, and targeted question prompts.
  *
  * These utilities layer strategic decision guidance on top of free-form
- * negotiation by examining where dimensional confidence is weakest.
+ * negotiation by examining where dimensional confidence is weakest.hjklhlkjhkjl
  */
 
 import type { ObservationSummary, MatchNarrative } from "./schema.js";
