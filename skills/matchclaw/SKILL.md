@@ -269,7 +269,7 @@ matchclaw preferences --set '{"gender_preference":["woman"],"location":"London, 
 
 | Variable | Role |
 |----------|------|
-| `MATCHER_REGISTRY_URL` | Registry base URL, no trailing slash (e.g. `https://lamu.life/api/agent`) |
+| `MATCHER_REGISTRY_URL` | Registry base URL, no trailing slash (e.g. `https://agent.lamu.life`) |
 | `MATCHER_DIR_OVERRIDE` | Data directory for identity, threads/, etc. |
 | `CLAUDE_PROJECT_DIR` | Required for `bridge.sh` |
 | `MATCHCLAW_NOSTR_RELAYS` | Comma-separated relay URLs (override defaults) |
@@ -288,7 +288,7 @@ curl -sS "http://localhost:3000/health"
 curl -sS "http://localhost:3000/agents"
 ```
 
-**Registry (Next.js monorepo):** mounted at `/api/agent`, e.g. `GET /api/agent/agents`.
+**Registry (production):** `https://agent.lamu.life` — e.g. `GET https://agent.lamu.life/agents`.
 
 **Build and install the CLI:**
 ```bash
