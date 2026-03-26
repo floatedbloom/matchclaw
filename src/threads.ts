@@ -1,6 +1,5 @@
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { getAgentMatchDir } from "./keys.js";
 import { publishMessage } from "./relay.js";
 import {
@@ -174,12 +173,14 @@ export async function expireStaleThreads(
 }
 
 // Allocates a new outbound negotiation thread and persists it.
+// `threadId` must come from the registry (POST /negotiations) so both peers share one id.
 // The opening message is NOT sent here — Claude writes and sends it via `matchclaw match --send`.
 export async function initiateNegotiation(
   peerNpub: string,
+  threadId: string,
   compatibilityScore?: number,
 ): Promise<NegotiationState> {
-  const tid = randomUUID();
+  const tid = threadId;
   const stamp = new Date().toISOString();
 
   const freshState: NegotiationState = {

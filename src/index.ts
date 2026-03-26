@@ -29,6 +29,8 @@ import {
   deregister,
   loadRegistration,
   listAgents,
+  mintNegotiationThread,
+  RegistryHttpError,
   type ProximityOpts,
 } from "./pool.js";
 import {
@@ -95,6 +97,7 @@ const { values: flags, positionals } = parseArgs({
     update: { type: "boolean" },
     write: { type: "string" },
     seed: { type: "boolean" },
+    "seed-b": { type: "boolean" },
     set: { type: "string" },
     relays: { type: "boolean" },
     start: { type: "boolean" },
@@ -180,7 +183,7 @@ async function main(): Promise<void> {
 Commands:
   setup        Create an identity and enroll with MatchClaw
   status       Display registration and observation state
-  observe      Inspect, refresh, or seed the observation (--seed bypasses observation phase)
+  observe      Inspect, refresh, or seed the observation (--seed / --seed-b for two dev personas)
   preferences  View or configure Layer 0 matching filters (gender, location, age)
   match        Handle matching negotiations
   handoff      Step through post-match handoff rounds (1→2→3)
@@ -376,11 +379,24 @@ async function runObserve(): Promise<void> {
   }
 
   // Populate with synthetic data — only for dev/testing or when explicitly bypassing observation
-  if (flags["seed"]) {
-    const dummyObs = seedDummyObservation();
+  if (flags["seed"] && flags["seed-b"]) {
+    console.error("Use only one of --seed (persona A) or --seed-b (persona B).");
+    process.exit(1);
+  }
+  if (flags["seed-b"]) {
+    const dummyObs = seedDummyObservation("b");
     await saveObservation(dummyObs);
     console.log(
-      "Dummy observation seeded (eligible for matching). Intended for dev/testing only, or when the observation phase has been explicitly bypassed.",
+      "Dummy observation persona B seeded (eligible for matching). Dev/testing only.",
+    );
+    console.log(`Eligible: ${isEligible(dummyObs)}`);
+    return;
+  }
+  if (flags["seed"]) {
+    const dummyObs = seedDummyObservation("a");
+    await saveObservation(dummyObs);
+    console.log(
+      "Dummy observation persona A seeded (eligible for matching). Intended for dev/testing only, or when the observation phase has been explicitly bypassed.",
     );
     console.log(`Eligible: ${isEligible(dummyObs)}`);
     return;
@@ -408,7 +424,7 @@ async function runObserve(): Promise<void> {
   }
 
   console.log(
-    "Expected usage: matchclaw observe --show | --update | --write '<json>' | --seed",
+    "Expected usage: matchclaw observe --show | --update | --write '<json>' | --seed | --seed-b",
   );
 }
 
@@ -1032,7 +1048,17 @@ async function handleMatchStart(
 
   // Random peer selection spreads load and avoids always talking to the same agent
   const chosenPeer = availablePeers[Math.floor(Math.random() * availablePeers.length)]!;
-  const newThread = await initiateNegotiation(chosenPeer.pubkey);
+  let threadId: string;
+  try {
+    threadId = await mintNegotiationThread(currentIdentity, chosenPeer.pubkey);
+  } catch (err) {
+    if (err instanceof RegistryHttpError) {
+      console.error(err.message);
+      return;
+    }
+    throw err;
+  }
+  const newThread = await initiateNegotiation(chosenPeer.pubkey, threadId);
 
   console.log(`Negotiation thread opened.`);
   if (onlyTwoInPool) {

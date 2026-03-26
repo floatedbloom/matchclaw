@@ -96,33 +96,61 @@ export function isStale(obs: ObservationSummary): boolean {
   return Date.now() - computedMs > ELIGIBILITY_FRESHNESS_HOURS * 60 * 60 * 1000;
 }
 
-/**
- * Produce a fully-eligible dummy observation for development or when the observation
- * phase is being skipped intentionally.
- */
-export function seedDummyObservation(): ObservationSummary {
-  // Helper to build a single dimension entry.
-  const makeDim = (conf: number, value?: string, content?: string): DimensionMeta => ({
+/** Which synthetic observation template `seedDummyObservation` uses. */
+export type DummyObservationPersona = "a" | "b";
+
+function makeDummyDim(conf: number, value?: string, content?: string): DimensionMeta {
+  return {
     confidence: conf,
     evidenceCount: 3,
     signalDiversity: "medium",
     ...(value && { value }),
     ...(content && { content }),
-  });
+  };
+}
+
+/**
+ * Produce a fully-eligible dummy observation for development or when the observation
+ * phase is being skipped intentionally.
+ *
+ * **`a`** and **`b`** differ in stated traits and narrative text but both clear all
+ * confidence floors so they remain pool-eligible and pass `preflightCheck` pairwise.
+ */
+export function seedDummyObservation(persona: DummyObservationPersona = "a"): ObservationSummary {
+  const ts = new Date().toISOString();
+
+  if (persona === "b") {
+    return {
+      lastRevised: ts,
+      eligibilityAt: ts,
+      poolEligible: true,
+      sessionCount: 5,
+      spanDays: 12,
+      attachmentType: makeDummyDim(0.62, "Secure"),
+      mbti: makeDummyDim(0.52, "ENFP"),
+      zodiac: makeDummyDim(0.48, "Libra"),
+      interests: makeDummyDim(0.58, undefined, "live music, photography, weekend trips"),
+      moralEthicalAlignment: makeDummyDim(0.62, undefined, "kindness, transparency, mutual respect"),
+      familyLifeGoalsAlignment: makeDummyDim(0.68, undefined, "long-term partnership, emotional availability, shared adventure"),
+      lifestyleRelationalBeliefs: makeDummyDim(0.66, undefined, "affection, space to grow individually, direct communication"),
+      gateState: "confirmed",
+      intentCategory: "serious",
+    };
+  }
 
   return {
-    lastRevised: new Date().toISOString(),
-    eligibilityAt: new Date().toISOString(),
+    lastRevised: ts,
+    eligibilityAt: ts,
     poolEligible: true,
     sessionCount: 3,
     spanDays: 7,
-    attachmentType: makeDim(0.6, "Secure"),
-    mbti: makeDim(0.5, "INTJ"),
-    zodiac: makeDim(0.45, "Aries"),
-    interests: makeDim(0.55, undefined, "hiking, cooking, reading"),
-    moralEthicalAlignment: makeDim(0.6, undefined, "integrity, honesty, fairness"),
-    familyLifeGoalsAlignment: makeDim(0.65, undefined, "partnership, growth, stability"),
-    lifestyleRelationalBeliefs: makeDim(0.65, undefined, "balanced independence, open communication"),
+    attachmentType: makeDummyDim(0.6, "Secure"),
+    mbti: makeDummyDim(0.5, "INTJ"),
+    zodiac: makeDummyDim(0.45, "Aries"),
+    interests: makeDummyDim(0.55, undefined, "hiking, cooking, reading"),
+    moralEthicalAlignment: makeDummyDim(0.6, undefined, "integrity, honesty, fairness"),
+    familyLifeGoalsAlignment: makeDummyDim(0.65, undefined, "partnership, growth, stability"),
+    lifestyleRelationalBeliefs: makeDummyDim(0.65, undefined, "balanced independence, open communication"),
     gateState: "confirmed",
     intentCategory: "unclear",
   };
