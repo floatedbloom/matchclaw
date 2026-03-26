@@ -214,6 +214,46 @@ class RegistryClient {
     }
     return payload.thread_id;
   }
+
+  /**
+   * Mark a thread as closed in the registry.
+   * Fails silently on network/server errors — local state is already persisted.
+   */
+  async closeNegotiationThread(
+    identity: AgentMatchIdentity,
+    threadId: string,
+  ): Promise<void> {
+    try {
+      const body = JSON.stringify({ pubkey: identity.npub });
+      const sig = signPayload(identity.nsec, new TextEncoder().encode(body));
+      await fetch(`${resolveRegistryUrl()}/negotiations/${encodeURIComponent(threadId)}/close`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Matcher-Sig": sig,
+        },
+        body,
+      });
+    } catch {
+      // Network failure — local state is already persisted; registry will eventually
+      // reflect closed status when the other side (or a future call) closes it.
+    }
+  }
+
+  /**
+   * Returns true if the registry recognises this thread ID.
+   * Fails open (returns true) on network/server errors so a downed registry
+   * doesn't block all inbound messages.
+   */
+  async validateNegotiationThread(threadId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${resolveRegistryUrl()}/negotiations/${encodeURIComponent(threadId)}`);
+      if (res.status === 404) return false;
+      return true; // any other status (200 or server error) → fail open
+    } catch {
+      return true; // network error → fail open
+    }
+  }
 }
 
 // Module-level singleton — all exported functions delegate here.
@@ -281,4 +321,15 @@ export async function mintNegotiationThread(
   peerPubkey: string,
 ): Promise<string> {
   return client.mintNegotiationThread(identity, peerPubkey);
+}
+
+export async function validateNegotiationThread(threadId: string): Promise<boolean> {
+  return client.validateNegotiationThread(threadId);
+}
+
+export async function closeNegotiationThread(
+  identity: AgentMatchIdentity,
+  threadId: string,
+): Promise<void> {
+  return client.closeNegotiationThread(identity, threadId);
 }

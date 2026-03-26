@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { getAgentMatchDir } from "./keys.js";
 import { publishMessage } from "./relay.js";
+import { closeNegotiationThread } from "./pool.js";
 import {
   ROUND_LIMIT,
   THREAD_EXPIRY_MS,
@@ -14,6 +15,7 @@ import type {
   AgentMatchMessage,
   MatchNarrative,
   ContactChannel,
+  AgentMatchIdentity,
 } from "./schema.js";
 import { VALID_CONTACT_TYPES } from "./schema.js";
 
@@ -139,9 +141,10 @@ export async function listActiveThreads(): Promise<NegotiationState[]> {
 // Marks threads that have been idle beyond the expiry window as expired.
 // Returns the collection of threads that were transitioned (for history recording).
 export async function expireStaleThreads(
-  nsec: string,
+  identity: AgentMatchIdentity,
   relays: string[],
 ): Promise<NegotiationState[]> {
+  const nsec = identity.nsec;
   const liveThreads = await store.list();
   const nowMs = Date.now();
   const justExpired: NegotiationState[] = [];
@@ -167,6 +170,9 @@ export async function expireStaleThreads(
     } catch {
       // Relay unreachable — state is already recorded locally; the peer will time out naturally
     }
+
+    // Best-effort: mark closed in the registry so the 7-day cooldown applies correctly.
+    void closeNegotiationThread(identity, t.thread_id);
   }
 
   return justExpired;
@@ -181,6 +187,16 @@ export async function initiateNegotiation(
   compatibilityScore?: number,
 ): Promise<NegotiationState> {
   const tid = threadId;
+
+  const existing = await store.load(tid);
+  if (existing) {
+    debugLog("negotiation", "Thread already exists locally — skipping overwrite", {
+      thread_id: tid,
+      status: existing.status,
+    });
+    return existing;
+  }
+
   const stamp = new Date().toISOString();
 
   const freshState: NegotiationState = {
@@ -378,7 +394,7 @@ export async function sendMessage(
 
 // Propose a match to the peer (double-lock: match is only confirmed when the peer also proposes)
 export async function proposeMatch(
-  nsec: string,
+  identity: AgentMatchIdentity,
   thread_id: string,
   narrative: MatchNarrative,
   relays: string[],
@@ -409,7 +425,7 @@ export async function proposeMatch(
     content: body,
   };
 
-  await publishMessage(nsec, existing.remoteKey, envelope, relays);
+  await publishMessage(identity.nsec, existing.remoteKey, envelope, relays);
 
   existing.messages.push({ role: "us", content: body, timestamp: stamp });
   existing.sentRounds += 1;
@@ -422,6 +438,8 @@ export async function proposeMatch(
   // reconstruct the state from scratch in this function — that would silently discard it.
   if (existing.theirProposal) {
     existing.status = "matched";
+    // Best-effort: mark closed in the registry so the 7-day cooldown applies correctly.
+    void closeNegotiationThread(identity, thread_id);
   }
 
   await store.save(existing);
@@ -430,7 +448,7 @@ export async function proposeMatch(
 
 // End our participation in a negotiation thread and notify the peer
 export async function declineMatch(
-  nsec: string,
+  identity: AgentMatchIdentity,
   thread_id: string,
   relays: string[],
   reason?: string,
@@ -449,7 +467,7 @@ export async function declineMatch(
     rounds: existing.sentRounds,
   });
 
-  await transmitEnd(nsec, existing.remoteKey, thread_id, relays);
+  await transmitEnd(identity.nsec, existing.remoteKey, thread_id, relays);
 
   existing.status = "declined";
   existing.touchedAt = new Date().toISOString();
@@ -457,6 +475,9 @@ export async function declineMatch(
     existing.closeReason = reason;
   }
   await store.save(existing);
+
+  // Best-effort: mark closed in the registry so the 7-day cooldown applies correctly.
+  void closeNegotiationThread(identity, thread_id);
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
