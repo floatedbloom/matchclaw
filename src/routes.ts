@@ -305,7 +305,8 @@ async function handleNegotiationMint(c: Context) {
   if (recent) {
     if (recent.closedAt === null) {
       // Still open — return the existing thread so both sides converge on the same ID.
-      return c.json({ thread_id: recent.threadId });
+      // `reused` tells the client to create responder state (weInitiated: false), not a second initiator.
+      return c.json({ thread_id: recent.threadId, reused: true });
     }
     // Closed within the last 7 days — enforce cooldown.
     return c.json({ error: "Negotiation cooldown: this pair must wait 7 days before starting a new negotiation" }, 429);
@@ -320,7 +321,7 @@ async function handleNegotiationMint(c: Context) {
     closedAt: null,
   });
 
-  return c.json({ thread_id: threadId });
+  return c.json({ thread_id: threadId, reused: false });
 }
 
 async function handleGetNegotiation(c: Context) {

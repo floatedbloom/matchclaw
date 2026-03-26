@@ -190,7 +190,7 @@ class RegistryClient {
   async mintNegotiationThread(
     identity: AgentMatchIdentity,
     peerPubkey: string,
-  ): Promise<string> {
+  ): Promise<MintNegotiationResult> {
     const body = JSON.stringify({ pubkey: identity.npub, peer_pubkey: peerPubkey });
     const sig = signPayload(identity.nsec, new TextEncoder().encode(body));
 
@@ -208,11 +208,14 @@ class RegistryClient {
       throw new RegistryHttpError(res.status, detail);
     }
 
-    const payload = (await res.json()) as { thread_id: string };
+    const payload = (await res.json()) as { thread_id: string; reused?: boolean };
     if (!payload.thread_id || typeof payload.thread_id !== "string") {
       throw new RegistryHttpError(res.status, "Missing thread_id in response");
     }
-    return payload.thread_id;
+    return {
+      threadId: payload.thread_id,
+      reused: payload.reused === true,
+    };
   }
 
   /**
@@ -322,6 +325,12 @@ export interface ListAgentsResult {
   onlyTwoInPool: boolean;
 }
 
+export interface MintNegotiationResult {
+  threadId: string;
+  /** True when the registry returned an already-open thread for this pair (second `match --start`). */
+  reused: boolean;
+}
+
 export async function listAgents(
   proximity?: ProximityOpts,
 ): Promise<ListAgentsResult> {
@@ -331,7 +340,7 @@ export async function listAgents(
 export async function mintNegotiationThread(
   identity: AgentMatchIdentity,
   peerPubkey: string,
-): Promise<string> {
+): Promise<MintNegotiationResult> {
   return client.mintNegotiationThread(identity, peerPubkey);
 }
 

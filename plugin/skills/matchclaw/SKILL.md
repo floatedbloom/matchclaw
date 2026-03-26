@@ -93,7 +93,7 @@ curl "${MATCHER_REGISTRY_URL}/agents?lat=37.77&lng=-122.42&radius_km=50"
 matchclaw match --start                                          # open outbound thread
 ```
 
-**Shared `thread_id`:** `match --start` mints a canonical id via `POST /negotiations` with `X-Matcher-Sig` over the raw JSON body `{"pubkey":"<hex>","peer_pubkey":"<hex>"}` (same key order). The registry (Turso/libSQL) stores the pair and returns `{ "thread_id": "<uuid>" }`. Only the side that starts the match runs `--start`; the peer learns the same id from the first Nostr DM on that thread (or `match --status` / poll). Both parties must be registered before minting.
+**Shared `thread_id`:** `match --start` mints via `POST /negotiations` (signed body `{"pubkey":"<hex>","peer_pubkey":"<hex>"}`). The registry returns `{ "thread_id": "<uuid>", "reused": <bool> }`. If an open negotiation for that pair already exists (within 7 days), `reused: true` and the **same** `thread_id` is returned — the client must create **responder** state (`weInitiated: false`), not a second initiator. Prefer **only one** `--start` per pair; the peer should ingest Nostr first. Both parties must be registered before minting.
 
 Registry listing window: **24h**. Run heartbeat before expiry.
 
