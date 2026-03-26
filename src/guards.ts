@@ -130,3 +130,16 @@ export function parseDeregisterBody(raw: unknown): Result<DeregisterBody> {
   if (!RE_PUBKEY.test(pubkey)) return { err: "Invalid pubkey" };
   return { ok: { pubkey } };
 }
+
+export interface NegotiationMintBody {
+  pubkey: string;
+  peer_pubkey: string;
+}
+
+export function parseNegotiationMintBody(raw: unknown): Result<NegotiationMintBody> {
+  if (!isObj(raw)) return { err: "Invalid JSON" };
+  const { pubkey, peer_pubkey: peerPubkey } = raw;
+  if (typeof pubkey !== "string" || !RE_PUBKEY.test(pubkey)) return { err: "Invalid pubkey" };
+  if (typeof peerPubkey !== "string" || !RE_PUBKEY.test(peerPubkey)) return { err: "Invalid peer_pubkey" };
+  return { ok: { pubkey, peer_pubkey: peerPubkey } };
+}

@@ -6,12 +6,22 @@
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { eq, gt, lt } from "drizzle-orm/sql";
 import { cfg } from "./config.js";
-import { db, agents, encrypt, verifyBip340 } from "./data.js";
+import { db, agents, negotiations, encrypt, verifyBip340 } from "./data.js";
 import { geocode, isAnywhere, agentInRange, parseProximityParams, type GeoAgent } from "./places.js";
-import { checkRateLimit, clientIp, readBody, isInternalUrl, REGEX, parseRegisterBody, parseDeregisterBody } from "./guards.js";
+import {
+  checkRateLimit,
+  clientIp,
+  readBody,
+  isInternalUrl,
+  REGEX,
+  parseRegisterBody,
+  parseDeregisterBody,
+  parseNegotiationMintBody,
+} from "./guards.js";
 
 // ── Migration ─────────────────────────────────────────────────────────────────
 
@@ -44,12 +54,21 @@ async function resolveLocation(input: string | null): Promise<LocResult> {
 
 // ── Static info handlers ──────────────────────────────────────────────────────
 
+function sortedPubkeyPair(a: string, b: string): [string, string] {
+  return a.toLowerCase() < b.toLowerCase() ? [a, b] : [b, a];
+}
+
 function handleRoot(c: Context) {
   return c.json({
     name: "MatchClaw",
     description: "AI agent matching network",
     version: "1.0",
-    endpoints: { agents: "/agents", register: "POST /register", skill: "/skill.md" },
+    endpoints: {
+      agents: "/agents",
+      register: "POST /register",
+      negotiations: "POST /negotiations",
+      skill: "/skill.md",
+    },
   });
 }
 
@@ -233,6 +252,52 @@ async function handleDeregister(c: Context) {
   return c.json({ deregistered: true, pubkey });
 }
 
+async function handleNegotiationMint(c: Context) {
+  if (!checkRateLimit(clientIp(c.req))) return c.json({ error: "Too many requests" }, 429);
+
+  const raw = await readBody(c.req);
+  if (!raw) return c.json({ error: "Request body too large" }, 413);
+
+  const sig = c.req.header("x-matcher-sig");
+  if (!sig || !REGEX.sig.test(sig)) return c.json({ error: "Missing or invalid X-Matcher-Sig" }, 400);
+
+  let body: unknown;
+  try {
+    body = JSON.parse(new TextDecoder().decode(raw));
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
+  }
+
+  const parsed = parseNegotiationMintBody(body);
+  if ("err" in parsed) return c.json({ error: parsed.err }, 400);
+
+  const { pubkey, peer_pubkey } = parsed.ok;
+  if (pubkey === peer_pubkey) return c.json({ error: "peer_pubkey must differ from pubkey" }, 400);
+  if (!verifyBip340(pubkey, sig, raw)) return c.json({ error: "Invalid signature" }, 401);
+
+  const [selfRow] = await db.select({ pk: agents.pubkey }).from(agents).where(eq(agents.pubkey, pubkey)).limit(1);
+  const [peerRow] = await db
+    .select({ pk: agents.pubkey })
+    .from(agents)
+    .where(eq(agents.pubkey, peer_pubkey))
+    .limit(1);
+  if (!selfRow || !peerRow) return c.json({ error: "Both parties must be registered" }, 400);
+
+  const [low, high] = sortedPubkeyPair(pubkey, peer_pubkey);
+  const threadId = randomUUID();
+  const now = new Date();
+
+  await db.insert(negotiations).values({
+    threadId,
+    pubkeyLow: low,
+    pubkeyHigh: high,
+    createdAt: now,
+    closedAt: null,
+  });
+
+  return c.json({ thread_id: threadId });
+}
+
 // ── App factory ───────────────────────────────────────────────────────────────
 
 export interface RegistryAppOptions { basePath?: string }
@@ -254,6 +319,7 @@ export function createRegistryApp({ basePath = "" }: RegistryAppOptions = {}): H
   app.get("/agents/:pubkey/card", handleGetAgentCard);
   app.post("/register", handleRegister);
   app.delete("/register", handleDeregister);
+  app.post("/negotiations", handleNegotiationMint);
   app.get("/skill.md", handleSkillDoc);
 
   if (!basePath) return app;

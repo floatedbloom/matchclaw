@@ -91,9 +91,18 @@ export const agents = sqliteTable("agents", {
   maxDistanceKm:    real("max_distance_km"),
 });
 
+/** Registry-minted negotiation thread ids (shared by both agents over Nostr). */
+export const negotiations = sqliteTable("negotiations", {
+  threadId:   text("thread_id").primaryKey(),
+  pubkeyLow:  text("pubkey_low").notNull(),
+  pubkeyHigh: text("pubkey_high").notNull(),
+  createdAt:  integer("created_at", { mode: "timestamp" }).notNull(),
+  closedAt:   integer("closed_at", { mode: "timestamp" }),
+});
+
 // ── Database client ───────────────────────────────────────────────────────────
 
 const token = cfg.dbToken();
 const client = createClient(token ? { url: cfg.dbUrl(), authToken: token } : { url: cfg.dbUrl() });
 
-export const db = drizzle(client, { schema: { agents } });
+export const db = drizzle(client, { schema: { agents, negotiations } });

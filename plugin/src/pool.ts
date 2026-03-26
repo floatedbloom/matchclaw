@@ -25,7 +25,7 @@ function resolveRegistrationPath(): string {
 
 // ── HTTP error type ───────────────────────────────────────────────────────────
 
-class RegistryHttpError extends Error {
+export class RegistryHttpError extends Error {
   readonly statusCode: number;
   constructor(statusCode: number, detail: string | null) {
     super(`Registry error ${statusCode}${detail ? `: ${detail}` : ""}`);
@@ -185,6 +185,35 @@ class RegistryClient {
       onlyTwoInPool: parsed.only_two_in_pool ?? false,
     };
   }
+
+  /** Mint a canonical thread id from the registry (Turso). Both agents must be registered. */
+  async mintNegotiationThread(
+    identity: AgentMatchIdentity,
+    peerPubkey: string,
+  ): Promise<string> {
+    const body = JSON.stringify({ pubkey: identity.npub, peer_pubkey: peerPubkey });
+    const sig = signPayload(identity.nsec, new TextEncoder().encode(body));
+
+    const res = await fetch(`${resolveRegistryUrl()}/negotiations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Matcher-Sig": sig,
+      },
+      body,
+    });
+
+    if (!res.ok) {
+      const detail = await this.extractErrorDetail(res);
+      throw new RegistryHttpError(res.status, detail);
+    }
+
+    const payload = (await res.json()) as { thread_id: string };
+    if (!payload.thread_id || typeof payload.thread_id !== "string") {
+      throw new RegistryHttpError(res.status, "Missing thread_id in response");
+    }
+    return payload.thread_id;
+  }
 }
 
 // Module-level singleton — all exported functions delegate here.
@@ -245,4 +274,11 @@ export async function listAgents(
   proximity?: ProximityOpts,
 ): Promise<ListAgentsResult> {
   return client.listAgents(proximity);
+}
+
+export async function mintNegotiationThread(
+  identity: AgentMatchIdentity,
+  peerPubkey: string,
+): Promise<string> {
+  return client.mintNegotiationThread(identity, peerPubkey);
 }
