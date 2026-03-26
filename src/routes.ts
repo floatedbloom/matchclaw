@@ -8,7 +8,8 @@ import { cors } from "hono/cors";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { migrate } from "drizzle-orm/libsql/migrator";
-import { eq, gt, lt } from "drizzle-orm/sql";
+import { and, eq, gt, lt } from "drizzle-orm/sql";
+import { desc } from "drizzle-orm";
 import { cfg } from "./config.js";
 import { db, agents, negotiations, encrypt, verifyBip340 } from "./data.js";
 import { geocode, isAnywhere, agentInRange, parseProximityParams, type GeoAgent } from "./places.js";
@@ -284,9 +285,33 @@ async function handleNegotiationMint(c: Context) {
   if (!selfRow || !peerRow) return c.json({ error: "Both parties must be registered" }, 400);
 
   const [low, high] = sortedPubkeyPair(pubkey, peer_pubkey);
-  const threadId = randomUUID();
   const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
 
+  // Fetch the most recent thread for this pair created within the last 7 days.
+  const [recent] = await db
+    .select({ threadId: negotiations.threadId, closedAt: negotiations.closedAt })
+    .from(negotiations)
+    .where(
+      and(
+        eq(negotiations.pubkeyLow, low),
+        eq(negotiations.pubkeyHigh, high),
+        gt(negotiations.createdAt, weekAgo),
+      ),
+    )
+    .orderBy(desc(negotiations.createdAt))
+    .limit(1);
+
+  if (recent) {
+    if (recent.closedAt === null) {
+      // Still open — return the existing thread so both sides converge on the same ID.
+      return c.json({ thread_id: recent.threadId });
+    }
+    // Closed within the last 7 days — enforce cooldown.
+    return c.json({ error: "Negotiation cooldown: this pair must wait 7 days before starting a new negotiation" }, 429);
+  }
+
+  const threadId = randomUUID();
   await db.insert(negotiations).values({
     threadId,
     pubkeyLow: low,
@@ -296,6 +321,65 @@ async function handleNegotiationMint(c: Context) {
   });
 
   return c.json({ thread_id: threadId });
+}
+
+async function handleGetNegotiation(c: Context) {
+  const threadId = c.req.param("threadId");
+  if (!threadId || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(threadId)) {
+    return c.json({ error: "Invalid thread_id" }, 400);
+  }
+
+  const [row] = await db
+    .select({
+      threadId:   negotiations.threadId,
+      pubkeyLow:  negotiations.pubkeyLow,
+      pubkeyHigh: negotiations.pubkeyHigh,
+      createdAt:  negotiations.createdAt,
+      closedAt:   negotiations.closedAt,
+    })
+    .from(negotiations)
+    .where(eq(negotiations.threadId, threadId))
+    .limit(1);
+
+  if (!row) return c.json({ error: "Thread not found" }, 404);
+  return c.json(row);
+}
+
+async function handleCloseNegotiation(c: Context) {
+  const threadId = c.req.param("threadId");
+  if (!threadId || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(threadId)) {
+    return c.json({ error: "Invalid thread_id" }, 400);
+  }
+
+  const raw = await readBody(c.req);
+  if (!raw) return c.json({ error: "Request body too large" }, 413);
+
+  const sig = c.req.header("x-matcher-sig");
+  if (!sig || !REGEX.sig.test(sig)) return c.json({ error: "Missing or invalid X-Matcher-Sig" }, 400);
+
+  let body: unknown;
+  try { body = JSON.parse(new TextDecoder().decode(raw)); }
+  catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  if (!body || typeof body !== "object" || !("pubkey" in body) || typeof (body as Record<string, unknown>)["pubkey"] !== "string") {
+    return c.json({ error: "Missing pubkey" }, 400);
+  }
+  const pubkey = (body as Record<string, unknown>)["pubkey"] as string;
+  if (!REGEX.pubkey.test(pubkey)) return c.json({ error: "Invalid pubkey" }, 400);
+  if (!verifyBip340(pubkey, sig, raw)) return c.json({ error: "Invalid signature" }, 401);
+
+  const [row] = await db
+    .select({ pubkeyLow: negotiations.pubkeyLow, pubkeyHigh: negotiations.pubkeyHigh, closedAt: negotiations.closedAt })
+    .from(negotiations)
+    .where(eq(negotiations.threadId, threadId))
+    .limit(1);
+
+  if (!row) return c.json({ error: "Thread not found" }, 404);
+  if (pubkey !== row.pubkeyLow && pubkey !== row.pubkeyHigh) return c.json({ error: "Not a party to this thread" }, 403);
+  if (row.closedAt !== null) return c.json({ closed: true, thread_id: threadId });
+
+  await db.update(negotiations).set({ closedAt: new Date() }).where(eq(negotiations.threadId, threadId));
+  return c.json({ closed: true, thread_id: threadId });
 }
 
 // ── App factory ───────────────────────────────────────────────────────────────
@@ -320,6 +404,8 @@ export function createRegistryApp({ basePath = "" }: RegistryAppOptions = {}): H
   app.post("/register", handleRegister);
   app.delete("/register", handleDeregister);
   app.post("/negotiations", handleNegotiationMint);
+  app.get("/negotiations/:threadId", handleGetNegotiation);
+  app.post("/negotiations/:threadId/close", handleCloseNegotiation);
   app.get("/skill.md", handleSkillDoc);
 
   if (!basePath) return app;

@@ -30,6 +30,8 @@ import {
   loadRegistration,
   listAgents,
   mintNegotiationThread,
+  validateNegotiationThread,
+  closeNegotiationThread,
   RegistryHttpError,
   type ProximityOpts,
 } from "./pool.js";
@@ -612,7 +614,7 @@ async function handleRepairDoubleLock(
     try {
       const parsed = JSON.parse(outputLine) as {
         thread_id: string;
-        remoteKey: string;
+        peer_pubkey: string;
         type: string;
         content: string;
       };
@@ -620,7 +622,7 @@ async function handleRepairDoubleLock(
 
       const updatedThread = await receiveMessage(
         parsed.thread_id,
-        parsed.remoteKey,
+        parsed.peer_pubkey,
         parsed.content,
         parsed.type,
       );
@@ -775,6 +777,20 @@ async function handleMatchReceive(
   }
 
   const resolvedType = rawMsgType ?? "negotiation";
+
+  // If this thread is new locally, validate it exists in the registry before
+  // creating local state — prevents orphaned or spoofed threads accumulating on disk.
+  const existingLocal = await loadThread(tid);
+  if (!existingLocal) {
+    const knownByRegistry = await validateNegotiationThread(tid);
+    if (!knownByRegistry) {
+      console.error(
+        `Thread ${tid.slice(0, 8)}... not found in registry — rejecting inbound message`,
+      );
+      process.exit(1);
+    }
+  }
+
   const updatedThread = await receiveMessage(tid, peerKey, msgContent, resolvedType);
   if (!updatedThread) {
     console.error(
@@ -818,6 +834,9 @@ async function handleMatchReceive(
     console.log(
       "Notification queued — Claude will bring this up organically in the next session.",
     );
+  }
+  if (updatedThread.status !== "in_progress") {
+    void closeNegotiationThread(currentIdentity, updatedThread.thread_id);
   }
   await persistOutcomeIfTerminal(updatedThread);
 }
@@ -886,7 +905,7 @@ async function handleMatchPropose(
   }
 
   const proposalResult = await proposeMatch(
-    currentIdentity.nsec,
+    currentIdentity,
     tid,
     parsedNarrative,
     DEFAULT_RELAYS,
@@ -946,7 +965,7 @@ async function handleMatchDecline(
     process.exit(1);
   }
   const declineText = flags["reason"] as string | undefined;
-  await declineMatch(currentIdentity.nsec, tid, DEFAULT_RELAYS, declineText);
+  await declineMatch(currentIdentity, tid, DEFAULT_RELAYS, declineText);
   const closedThread = await loadThread(tid);
   await persistOutcomeIfTerminal(closedThread, declineText);
   console.log(`Negotiation closed (thread ${tid.slice(0, 8)}...)`);
@@ -975,7 +994,7 @@ async function handleMatchStart(
   }
 
   // Expire old threads before looking for new peers
-  const expiredList = await expireStaleThreads(currentIdentity.nsec, DEFAULT_RELAYS);
+  const expiredList = await expireStaleThreads(currentIdentity, DEFAULT_RELAYS);
   for (const expiredThread of expiredList) {
     await persistOutcomeIfTerminal(expiredThread);
   }

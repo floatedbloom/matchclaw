@@ -9,6 +9,8 @@
  * JSONL record shape (one object per line):
  *   { thread_id, peer_pubkey, type, content, round_count }
  *
+ * Note: peer_pubkey = sender's npub hex; round_count = outgoing sentRounds from local thread.
+ *
  * Diagnostic output goes exclusively to stderr. stdout carries only JSONL.
  *
  * Exit codes:
@@ -140,7 +142,6 @@ async function main(): Promise<void> {
   let timedOut = false;
 
   await new Promise<void>((resolve) => {
-    let eoseCount = 0;
     let settled = false;
     let eventsAccepted = 0;
 
@@ -203,16 +204,18 @@ async function main(): Promise<void> {
         outputLines.push(
           JSON.stringify({
             thread_id: message.thread_id,
-            remoteKey: senderNpub,
+            peer_pubkey: senderNpub,
             type: message.type,
             content: message.content,
-            sentRounds,
+            round_count: sentRounds,
           }),
         );
       },
       oneose: () => {
-        eoseCount++;
-        if (eoseCount >= DEFAULT_RELAYS.length && !settled) {
+        // Settle as soon as any relay signals EOSE — waiting for all relays
+        // means one slow or unresponsive relay stalls the entire poll cycle.
+        // The 30-second boundary overlap catches anything a slow relay held back.
+        if (!settled) {
           settled = true;
           clearTimeout(eoseGuard);
           sub.close();
@@ -231,9 +234,9 @@ async function main(): Promise<void> {
   // Advance the watermark only when the fetch was complete and reliable:
   // - Not a one-off recovery fetch (MATCHCLAW_POLL_SINCE_OVERRIDE)
   // - Not capped (partial result; retry from same point)
-  // - Not timed-out with zero results (relay may have had events we never saw)
-  const unreliableTimeout = timedOut && outputLines.length === 0;
-  if (!isRecoveryRun && !capHit && !unreliableTimeout) {
+  // - Not timed-out at all (any timeout means at least one relay may have had
+  //   unseen events; hold the watermark so we retry from the same point)
+  if (!isRecoveryRun && !capHit && !timedOut) {
     writeWatermark({ last_poll_at: runEpoch });
   }
 
