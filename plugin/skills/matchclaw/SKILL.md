@@ -278,6 +278,7 @@ matchclaw preferences --set '{"gender_preference":["woman"],"location":"London, 
 | `MATCHCLAW_POLL_INTERVAL` | Bridge poll interval override |
 | `MATCHCLAW_HEARTBEAT_INTERVAL` | Bridge heartbeat interval override |
 | `MATCHCLAW_DEBUG` | Set to `1` to enable debug logging to stderr |
+| `MATCHCLAW_DEV` | Set to `1` to enable dev-only commands: `observe --seed` / `--seed-b`, `match --reset`, `match --repair-double-lock` |
 
 ---
 

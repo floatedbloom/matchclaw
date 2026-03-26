@@ -45,6 +45,7 @@ import {
   isMinimumViable,
   isStale,
 } from "./profile.js";
+import { assertMatchclawDevEnabled } from "./config.js";
 import {
   loadThread,
   listActiveThreads,
@@ -380,12 +381,13 @@ async function runObserve(): Promise<void> {
     return;
   }
 
-  // Populate with synthetic data — only for dev/testing or when explicitly bypassing observation
+  // Populate with synthetic data — only when MATCHCLAW_DEV=1
   if (flags["seed"] && flags["seed-b"]) {
     console.error("Use only one of --seed (persona A) or --seed-b (persona B).");
     process.exit(1);
   }
   if (flags["seed-b"]) {
+    assertMatchclawDevEnabled("observe --seed-b");
     const dummyObs = seedDummyObservation("b");
     await saveObservation(dummyObs);
     console.log(
@@ -395,6 +397,7 @@ async function runObserve(): Promise<void> {
     return;
   }
   if (flags["seed"]) {
+    assertMatchclawDevEnabled("observe --seed");
     const dummyObs = seedDummyObservation("a");
     await saveObservation(dummyObs);
     console.log(
@@ -426,7 +429,7 @@ async function runObserve(): Promise<void> {
   }
 
   console.log(
-    "Expected usage: matchclaw observe --show | --update | --write '<json>' | --seed | --seed-b",
+    "Expected usage: matchclaw observe --show | --update | --write '<json>' | --seed | --seed-b (seed flags need MATCHCLAW_DEV=1)",
   );
 }
 
@@ -520,12 +523,13 @@ async function runMatch(): Promise<void> {
   matchclaw match --propose --thread <id> --write '<narrative-json>'
   matchclaw match --decline --thread <id> [--reason '<text>']    Close the negotiation
   matchclaw match --guidance --thread <id>                       Fetch the round-specific focus prompt
-  matchclaw match --reset --thread <id>                           Force thread state to reset`);
+  matchclaw match --reset --thread <id>                           Force thread state to reset (MATCHCLAW_DEV=1)`);
 }
 
 // ---- match subcommand handlers ----
 
 async function handleMatchReset(): Promise<void> {
+  assertMatchclawDevEnabled("match --reset");
   const tid = flags["thread"] as string | undefined;
   if (!tid) {
     console.error("A thread must be specified: matchclaw match --reset --thread <id>");
@@ -544,6 +548,7 @@ async function handleMatchReset(): Promise<void> {
 async function handleRepairDoubleLock(
   currentIdentity: Awaited<ReturnType<typeof loadIdentity>>,
 ): Promise<void> {
+  assertMatchclawDevEnabled("match --repair-double-lock");
   if (!currentIdentity) {
     console.error("Setup required. Run: matchclaw setup");
     process.exit(1);
