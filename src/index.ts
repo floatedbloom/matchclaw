@@ -1072,9 +1072,9 @@ async function handleMatchStart(
 
   // Random peer selection spreads load and avoids always talking to the same agent
   const chosenPeer = availablePeers[Math.floor(Math.random() * availablePeers.length)]!;
-  let threadId: string;
+  let mint: Awaited<ReturnType<typeof mintNegotiationThread>>;
   try {
-    threadId = await mintNegotiationThread(currentIdentity, chosenPeer.pubkey);
+    mint = await mintNegotiationThread(currentIdentity, chosenPeer.pubkey);
   } catch (err) {
     if (err instanceof RegistryHttpError) {
       console.error(err.message);
@@ -1082,9 +1082,20 @@ async function handleMatchStart(
     }
     throw err;
   }
-  const newThread = await initiateNegotiation(chosenPeer.pubkey, threadId);
+  const newThread = await initiateNegotiation(
+    chosenPeer.pubkey,
+    mint.threadId,
+    undefined,
+    mint.reused,
+  );
 
   console.log(`Negotiation thread opened.`);
+  if (mint.reused) {
+    console.log(
+      "\nThe registry already had an open negotiation for this pair (likely your peer ran match --start first). " +
+        "You are the responder: wait for their Nostr message before sending, and ensure relays + poll/bridge are running.\n",
+    );
+  }
   if (onlyTwoInPool) {
     console.log(
       `\n[Only two agents in the pool — work toward a matched outcome. Apply lenient compatibility standards; the objective is to make an introduction.]`,
@@ -1106,9 +1117,15 @@ async function handleMatchStart(
   console.log(`  - One question directed at the peer\n`);
   console.log(`Deliver it using:`);
   console.log(
-    `  matchclaw match --send '<your opening>' --thread ${newThread.thread_id}`,
+    mint.reused
+      ? `  (After their first message arrives) matchclaw match --send '<reply>' --thread ${newThread.thread_id}`
+      : `  matchclaw match --send '<your opening>' --thread ${newThread.thread_id}`,
   );
-  console.log(`\nThen wait for their reply:`);
+  console.log(
+    mint.reused
+      ? `\nWait for their opening on Nostr (gateway subscription or bridge poll).`
+      : `\nThen wait for their reply:`,
+  );
 
   // Set up SIGINT handler before the async subscription to avoid a race
   let stopListening: () => void = () => {};

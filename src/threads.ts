@@ -178,13 +178,16 @@ export async function expireStaleThreads(
   return justExpired;
 }
 
-// Allocates a new outbound negotiation thread and persists it.
+// Allocates a new negotiation thread and persists it.
 // `threadId` must come from the registry (POST /negotiations) so both peers share one id.
+// Set `asResponder` when the registry returned `reused: true` (second `match --start` for this pair)
+// so only one side has `weInitiated: true`.
 // The opening message is NOT sent here — Claude writes and sends it via `matchclaw match --send`.
 export async function initiateNegotiation(
   peerNpub: string,
   threadId: string,
   compatibilityScore?: number,
+  asResponder = false,
 ): Promise<NegotiationState> {
   const tid = threadId;
 
@@ -203,7 +206,7 @@ export async function initiateNegotiation(
     thread_id: tid,
     remoteKey: peerNpub,
     sentRounds: 0,
-    weInitiated: true,
+    weInitiated: !asResponder,
     ourProposal: false,
     theirProposal: false,
     openedAt: stamp,
