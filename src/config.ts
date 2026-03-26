@@ -108,3 +108,21 @@ export function debugLog(
   const suffix = context ? ` ${JSON.stringify(context)}` : "";
   console.error(`[MatchClaw:${module}] ${ts} ${message}${suffix}`);
 }
+
+// ── Dev-only CLI ──────────────────────────────────────────────────────────────
+
+/**
+ * Synthetic personas, forced thread resets, and double-lock repair require
+ * MATCHCLAW_DEV=1 so production installs do not expose these accidentally.
+ */
+export function isMatchclawDevEnabled(): boolean {
+  return process.env["MATCHCLAW_DEV"] === "1";
+}
+
+export function assertMatchclawDevEnabled(feature: string): void {
+  if (isMatchclawDevEnabled()) return;
+  console.error(
+    `${feature} requires MATCHCLAW_DEV=1 (local development or authorized recovery).`,
+  );
+  process.exit(1);
+}

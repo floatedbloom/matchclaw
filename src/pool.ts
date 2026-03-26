@@ -248,8 +248,20 @@ class RegistryClient {
   async validateNegotiationThread(threadId: string): Promise<boolean> {
     try {
       const res = await fetch(`${resolveRegistryUrl()}/negotiations/${encodeURIComponent(threadId)}`);
-      if (res.status === 404) return false;
-      return true; // any other status (200 or server error) → fail open
+      if (res.ok) return true;
+      if (res.status === 404) {
+        // Distinguish "thread not found" (our endpoint, specific error body) from
+        // "route not found" (old server without this endpoint, generic 404).
+        // Only reject when we are certain the endpoint exists and the thread is missing.
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body.error === "Thread not found") return false;
+        } catch {
+          // Body is not JSON — old server or proxy page → fail open
+        }
+        return true; // endpoint not deployed yet or unexpected 404 body → fail open
+      }
+      return true; // 5xx or other status → fail open
     } catch {
       return true; // network error → fail open
     }

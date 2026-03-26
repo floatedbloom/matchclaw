@@ -171,21 +171,28 @@ while true; do
         if [[ -n "$thread_id" ]]; then
           # Register the inbound message via matchclaw before Claude sees it.
           # Env vars carry the values to avoid shell injection / quoting hazards.
+          # Propagate the exit code so we can gate handle_message on success.
           TM_CONTENT="$content" \
           TM_THREAD_ID="$thread_id" \
           TM_PEER_PUBKEY="$peer_pubkey" \
           TM_MSG_TYPE="$msg_type" \
           node -e "
             const { spawnSync } = require('child_process');
-            spawnSync('matchclaw', [
+            const r = spawnSync('matchclaw', [
               'match', '--receive', process.env.TM_CONTENT,
               '--thread',           process.env.TM_THREAD_ID,
               '--peer',             process.env.TM_PEER_PUBKEY,
               '--type',             process.env.TM_MSG_TYPE
             ], { stdio: 'inherit' });
-          " 2>&1 || true
+            process.exit(r.status ?? 1);
+          " 2>&1
+          receive_exit=$?
 
-          handle_message "$thread_id" "$peer_pubkey" "$msg_type" "$content" "$round_count"
+          if [[ $receive_exit -eq 0 ]]; then
+            handle_message "$thread_id" "$peer_pubkey" "$msg_type" "$content" "$round_count"
+          else
+            echo "matchclaw match --receive failed (exit $receive_exit) — skipping Claude for thread ${thread_id:0:8}..." >&2
+          fi
         fi
       done < "$MSG_STAGING_FILE"
 
