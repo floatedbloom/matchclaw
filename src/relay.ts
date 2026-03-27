@@ -1,7 +1,7 @@
-import { SimplePool, verifyEvent, type Event } from "nostr-tools";
+import { SimplePool, verifyEvent, type Event, type Filter } from "nostr-tools";
 import { unwrapEvent, wrapManyEvents } from "nostr-tools/nip17";
 import { hexToBytes } from "nostr-tools/utils";
-import { getNostrRelays, debugLog } from "./config.js";
+import { getNostrRelays, debugLog, THREAD_EXPIRY_MS } from "./config.js";
 import type { AgentMatchMessage } from "./schema.js";
 
 // Load relay list from configuration at module init time.
@@ -10,6 +10,56 @@ export const DEFAULT_RELAYS = getNostrRelays();
 // NIP-17 event kinds used for private DM gift wrapping.
 const GIFT_WRAP_KIND = 1059;
 const PRIVATE_DM_KIND = 14;
+
+const RE_HEX64 = /^[0-9a-f]{64}$/;
+
+/** Lowercase hex so strfry / `#p` indexing matches published gift wraps. */
+export function normalizeNostrPubkeyHex(pubkey: string): string {
+  const lower = pubkey.trim().toLowerCase();
+  if (!RE_HEX64.test(lower)) {
+    throw new Error("npub must be 64 lowercase hex characters");
+  }
+  return lower;
+}
+
+/**
+ * Strfry rejects REQ with `since: null` (e.g. when NaN was JSON-serialized). Always finite.
+ */
+export function safeFilterSinceUnix(
+  candidate: number | undefined,
+  fallbackSecondsAgo: number,
+): number {
+  const now = Math.floor(Date.now() / 1000);
+  const floor = now - fallbackSecondsAgo;
+  if (candidate === undefined || !Number.isFinite(candidate)) return floor;
+  return Math.floor(Math.max(0, candidate));
+}
+
+/** Single filter for kind 1059 + `#p` (NIP-01). Optional limit for one-shot poll queries. */
+export function buildGiftWrapFilter(
+  recipientPubkeyHex: string,
+  sinceUnix: number,
+  options?: { limit?: number },
+): Filter {
+  const pk = normalizeNostrPubkeyHex(recipientPubkeyHex);
+  const since = safeFilterSinceUnix(
+    sinceUnix,
+    Math.ceil(THREAD_EXPIRY_MS / 1000),
+  );
+  const filter: Filter = {
+    kinds: [GIFT_WRAP_KIND],
+    "#p": [pk],
+    since,
+  };
+  if (
+    options?.limit !== undefined &&
+    Number.isFinite(options.limit) &&
+    options.limit > 0
+  ) {
+    filter.limit = Math.floor(options.limit);
+  }
+  return filter;
+}
 
 // ── Result type ───────────────────────────────────────────────────────────────
 
@@ -64,18 +114,11 @@ class RelayPool {
       oneose?: () => void;
     },
   ): () => void {
-    const sub = this.pool.subscribeMany(
-      this.endpoints,
-      {
-        kinds: [GIFT_WRAP_KIND],
-        "#p": [recipientNpub],
-        since: lookbackTs,
-      },
-      {
-        onevent: handlers.onevent,
-        oneose: () => handlers.oneose?.(),
-      },
-    );
+    const filter = buildGiftWrapFilter(recipientNpub, lookbackTs);
+    const sub = this.pool.subscribeMany(this.endpoints, filter, {
+      onevent: handlers.onevent,
+      oneose: () => handlers.oneose?.(),
+    });
 
     return () => {
       sub.close();
@@ -157,7 +200,7 @@ export function parseIncomingMatchClawEvent(
 
     // Inner rumor must be a private DM and must not be from ourselves.
     if (rumor.kind !== PRIVATE_DM_KIND) return null;
-    if (rumor.pubkey === recipientNpub) return null;
+    if (rumor.pubkey.toLowerCase() === recipientNpub.toLowerCase()) return null;
 
     let body: unknown;
     try {
@@ -192,10 +235,11 @@ export async function publishMessage(
 
   const signingKey = hexToBytes(senderNsec);
   const serialized = JSON.stringify(message);
+  const peerHex = normalizeNostrPubkeyHex(recipientNpub);
 
   const wrappedEvents = wrapManyEvents(
     signingKey,
-    [{ publicKey: recipientNpub }],
+    [{ publicKey: peerHex }],
     serialized,
     undefined,
     undefined,
@@ -227,15 +271,19 @@ export async function subscribeToMessages(
 ): Promise<() => void> {
   const seenIds = new Set<string>();
   const nsecBytes = hexToBytes(recipientNsec);
+  const npubHex = normalizeNostrPubkeyHex(recipientNpub);
 
-  // Default lookback window is one hour before now.
-  const lookbackTs = since ?? Math.floor(Date.now() / 1000) - 60 * 60;
+  const fallbackAgo = Math.ceil(THREAD_EXPIRY_MS / 1000);
+  const lookbackTs =
+    since !== undefined && Number.isFinite(since)
+      ? Math.floor(since)
+      : Math.floor(Date.now() / 1000) - fallbackAgo;
 
   const relay = new RelayPool(relays);
 
-  return relay.subscribe(recipientNpub, lookbackTs, {
+  return relay.subscribe(npubHex, lookbackTs, {
     onevent: async (event: Event) => {
-      const parsed = parseIncomingMatchClawEvent(event, nsecBytes, recipientNpub);
+      const parsed = parseIncomingMatchClawEvent(event, nsecBytes, npubHex);
       if (!parsed) return;
 
       // Deduplicate — ignore events we've already handled.

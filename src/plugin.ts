@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { getAgentMatchDir } from "./keys.js";
@@ -288,12 +289,15 @@ class PrefsCommandHandler {
 
 // Resolves the state base directory and CLI/poll entrypoint paths from the environment.
 // Computed once at module load so path strings are stable throughout the process lifetime.
+// cli/poll are derived from the plugin's own dist/ directory so the paths remain correct
+// regardless of the extension directory name (e.g. matchclaw- vs matchclaw-plugin).
 function resolveCliPaths() {
   const base = process.env["OPENCLAW_STATE_DIR"] ?? join(homedir(), ".openclaw");
+  const pluginDistDir = dirname(fileURLToPath(import.meta.url));
   return {
     base,
-    cli: `node ${join(base, "extensions", "matchclaw-plugin", "dist", "index.js")}`,
-    poll: join(base, "extensions", "matchclaw-plugin", "dist", "inbox.js"),
+    cli: `node ${join(pluginDistDir, "index.js")}`,
+    poll: join(pluginDistDir, "inbox.js"),
   };
 }
 
