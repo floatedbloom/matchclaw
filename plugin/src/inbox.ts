@@ -20,10 +20,14 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { SimplePool, type Event, type Filter } from "nostr-tools";
+import { SimplePool, type Event } from "nostr-tools";
 import { hexToBytes } from "nostr-tools/utils";
 import { getAgentMatchDir } from "./keys.js";
-import { DEFAULT_RELAYS, parseIncomingMatchClawEvent } from "./relay.js";
+import {
+  DEFAULT_RELAYS,
+  buildGiftWrapFilter,
+  parseIncomingMatchClawEvent,
+} from "./relay.js";
 import type {
   AgentMatchMessage,
   AgentMatchIdentity,
@@ -36,14 +40,16 @@ const IDENTITY_FILE = join(agentDir, "identity.json");
 const WATERMARK_FILE = join(agentDir, "poll-state.json");
 const THREADS_DIR = join(agentDir, "threads");
 
-const GIFT_WRAP_KIND = 1059;
 // Thread IDs must be UUID v4 — rejects path traversal attempts.
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 // Hard cap on events processed in a single run.
 const FETCH_LIMIT = 100;
-// Overlap applied to the watermark timestamp to catch boundary-edge events.
-const BOUNDARY_OVERLAP_SECONDS = 30;
+// NIP-17 gift wraps have a random `created_at` anywhere within the past 2 days
+// (see nostr-tools randomNow). The relay `since` filter uses that backdated
+// timestamp, so we must always look back at least 2 days or we miss events
+// whose random timestamp falls before our watermark.
+const NIP17_JITTER_SECONDS = 2 * 24 * 3600; // 172 800
 // How long to wait for relay EOSE before giving up and proceeding.
 const EOSE_TIMEOUT_MS = Number(process.env["MATCHCLAW_POLL_EOSE_TIMEOUT_MS"]) || 20_000;
 
@@ -80,7 +86,7 @@ class MessageFilter {
 // ── Watermark persistence ─────────────────────────────────────────────────────
 
 function readWatermark(): PollState {
-  const fallback: PollState = { last_poll_at: Math.floor(Date.now() / 1000) - 3600 };
+  const fallback: PollState = { last_poll_at: Math.floor(Date.now() / 1000) - NIP17_JITTER_SECONDS };
   if (!existsSync(WATERMARK_FILE)) return fallback;
   try {
     return JSON.parse(readFileSync(WATERMARK_FILE, "utf8")) as PollState;
@@ -129,12 +135,16 @@ async function main(): Promise<void> {
 
   const savedWatermark = readWatermark();
   const sinceOverride = process.env["MATCHCLAW_POLL_SINCE_OVERRIDE"];
-  const windowStart = sinceOverride
-    ? parseInt(sinceOverride, 10)
-    : savedWatermark.last_poll_at - BOUNDARY_OVERLAP_SECONDS;
-  const isRecoveryRun = Boolean(sinceOverride);
   const runEpoch = Math.floor(Date.now() / 1000);
-
+  // Always look back NIP17_JITTER_SECONDS (2 days) from the last poll to catch
+  // gift-wrap events whose randomNow() timestamp predates the watermark.
+  const rawWindow = sinceOverride
+    ? parseInt(sinceOverride, 10)
+    : savedWatermark.last_poll_at - NIP17_JITTER_SECONDS;
+  const windowStart = Number.isFinite(rawWindow)
+    ? rawWindow
+    : runEpoch - NIP17_JITTER_SECONDS;
+  const isRecoveryRun = Boolean(sinceOverride);
   const pool = new SimplePool();
   const filter = new MessageFilter();
   const outputLines: string[] = [];
@@ -158,18 +168,15 @@ async function main(): Promise<void> {
       }
     }, EOSE_TIMEOUT_MS);
 
-    const relayFilter: Filter = {
-      kinds: [GIFT_WRAP_KIND],
-      "#p": [identity.npub],
-      since: windowStart,
+    const relayFilter = buildGiftWrapFilter(identity.npub, windowStart, {
       limit: FETCH_LIMIT,
-    };
+    });
 
     const sub = pool.subscribeMany(DEFAULT_RELAYS, relayFilter, {
       onevent: (ev: Event) => {
         if (settled) return;
 
-        // Skip duplicate events delivered by multiple relays.
+        // Skip duplicate events delivered by multiple relays (in-run dedup).
         if (!filter.isFirstSeen(ev.id)) return;
 
         // Drop events that predate the fetch window.
@@ -201,6 +208,15 @@ async function main(): Promise<void> {
         const threadSnapshot = readThreadState(message.thread_id);
         const sentRounds = threadSnapshot?.sentRounds ?? 0;
 
+        // Cross-run dedup: skip if this exact content was already received and
+        // persisted by a previous `match --receive` call.  This is safer than
+        // an event-ID set written before receive runs — if receive never ran the
+        // message won't be in the thread yet, so we correctly re-emit it.
+        const alreadyReceived = threadSnapshot?.messages.some(
+          (m) => m.role === "peer" && m.content === message.content,
+        ) ?? false;
+        if (alreadyReceived) return;
+
         outputLines.push(
           JSON.stringify({
             thread_id: message.thread_id,
@@ -212,9 +228,8 @@ async function main(): Promise<void> {
         );
       },
       oneose: () => {
-        // Settle as soon as any relay signals EOSE — waiting for all relays
-        // means one slow or unresponsive relay stalls the entire poll cycle.
-        // The 30-second boundary overlap catches anything a slow relay held back.
+        // nostr-tools 2.x SimplePool calls oneose only after ALL relays EOSE,
+        // so we don't need to worry about settling too early here.
         if (!settled) {
           settled = true;
           clearTimeout(eoseGuard);
