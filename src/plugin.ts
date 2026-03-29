@@ -342,7 +342,7 @@ function registerHeartbeatCron(stateBaseDir: string, matchDir: string): void {
       // Default poll interval is 1 minute — keeps negotiations responsive.
       // The registry TTL is 24h so polling this frequently is fine.
       const heartbeatIntervalMs = parseInt(
-        process.env["MATCHCLAW_CRON_INTERVAL_MS"] ?? "60000",
+        process.env["MATCHCLAW_CRON_INTERVAL_MS"] ?? "900000",
         10,
       );
       const creationTimestamp = Date.now();

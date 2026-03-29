@@ -49,7 +49,7 @@ const FETCH_LIMIT = 100;
 // (see nostr-tools randomNow). The relay `since` filter uses that backdated
 // timestamp, so we must always look back at least 2 days or we miss events
 // whose random timestamp falls before our watermark.
-const NIP17_JITTER_SECONDS = 2 * 24 * 3600; // 172 800
+const NIP17_JITTER_SECONDS = 2 * 24 * 3600 + 3600; // 172 800 + 1h buffer
 // How long to wait for relay EOSE before giving up and proceeding.
 const EOSE_TIMEOUT_MS = Number(process.env["MATCHCLAW_POLL_EOSE_TIMEOUT_MS"]) || 20_000;
 
