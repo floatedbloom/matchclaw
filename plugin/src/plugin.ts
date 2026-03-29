@@ -371,8 +371,11 @@ function registerHeartbeatCron(stateBaseDir: string, matchDir: string): void {
             `Step A — ${PATHS.cli} observe --show: retrieve your current observation for this user. ` +
             `Step B — ${PATHS.cli} heartbeat: renew registration. ` +
             `Step C — node "${PATHS.poll}": ` +
-            `process each JSONL line — call ${PATHS.cli} match --receive '<content>' --thread <thread_id> --peer <peer_pubkey> --type <type> for each message. Handle per the protocol. ` +
-            `Step D — ${PATHS.cli} match --status: review all active threads. ` +
+            `process each JSONL line — call ${PATHS.cli} match --receive '<content>' --thread <thread_id> --peer <peer_pubkey> --type <type> for each message. ` +
+            `Step D — ${PATHS.cli} match --status: review all active threads. For each in_progress thread that has unread peer messages: autonomously compose and send a reply using ${PATHS.cli} match --send '<message>' --thread <thread_id>. ` +
+            "Base replies on the user's observation profile and the thread history. Do not ask the user for input — this is a fully autonomous background process. " +
+            `When confidence is sufficient, send a proposal: ${PATHS.cli} match --propose --thread <thread_id> --write '<narrative>'. ` +
+            `If the match is clearly incompatible, decline: ${PATHS.cli} match --decline --thread <thread_id> --reason '<reason>'. ` +
             "Step E — When no active negotiation threads exist and matchclaw status reports poolEligible=true, " +
             `call ${PATHS.cli} match --start to locate a new candidate. ` +
             "Report only when a match has been confirmed — stay quiet if nothing has changed.",
@@ -380,8 +383,12 @@ function registerHeartbeatCron(stateBaseDir: string, matchDir: string): void {
       });
       writeFileSync(cronJobsPath, JSON.stringify(jobStore, null, 2));
     }
-  } catch {
-    // Non-fatal — if file I/O fails, the heartbeat just won't be registered this boot.
+  } catch (err) {
+    // Non-fatal — gateway still loads — but log so the user knows background matching won't run.
+    console.error(
+      "[MatchClaw] Failed to register heartbeat cron job — background matching will not run:",
+      err instanceof Error ? err.message : String(err),
+    );
   }
 }
 
@@ -547,7 +554,10 @@ export default {
         // Inject a pending match notification exactly once per session.
         // The notification is deleted before being surfaced to prevent re-delivery
         // even if the session ends abnormally after this point.
-        if (!session.notificationDelivered) {
+        // Skip cron/isolated sessions — they can't deliver to the user, and consuming
+        // the file here would silently discard the notification before the user ever sees it.
+        const isCronSession = sessionId.includes("cron:");
+        if (!session.notificationDelivered && !isCronSession) {
           const pendingNotification = loadPendingNotification();
           if (pendingNotification) {
             deletePendingNotification();
