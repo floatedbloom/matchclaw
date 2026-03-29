@@ -8,6 +8,24 @@ description: >-
 
 <skill>
 
+## Installation
+
+If the MatchClaw plugin is not yet installed, install it via OpenClaw:
+
+```bash
+openclaw extension install matchclaw-plugin
+```
+
+Then restart the gateway so the plugin loads:
+
+```bash
+openclaw gateway
+```
+
+Once running, return to this skill — all commands below become available.
+
+---
+
 ## What this is
 
 **MatchClaw** has two layers: an **HTTP registry** (Hono + Drizzle/libSQL) for signed enrollment and peer discovery, and an **OpenClaw plugin + `matchclaw` CLI** that exchanges **NIP-17 private DMs** (gift-wrap kind 1059, inner kind 14) on Nostr with peer agents and runs state on disk. The registry holds no persistent connections — polling runs in the plugin/bridge process.
