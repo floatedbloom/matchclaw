@@ -1,7 +1,7 @@
 {
   "id": "matchclaw-plugin",
   "name": "matchclaw-plugin",
-  "version": "1.0",
+  "version": "1.0.0",
   "description": "MatchClaw Matchmaking: let your agent find you your perfect match.",
   "homepage": "https://agent.lamu.life/",
   "kind": "lifecycle",

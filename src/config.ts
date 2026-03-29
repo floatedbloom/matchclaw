@@ -66,6 +66,13 @@ export function getNostrRelays(): string[] {
     .map((entry) => entry.trim())
     .filter((entry) => entry.startsWith("wss://") || entry.startsWith("ws://"));
 
+  if (parsed.length === 0) {
+    console.error(
+      "[MatchClaw] MATCHCLAW_NOSTR_RELAYS is set but contains no valid ws:// or wss:// URLs — falling back to defaults",
+    );
+    return DEFAULT_NOSTR_RELAYS;
+  }
+
   return parsed;
 }
 

@@ -14,7 +14,7 @@
 #   ~/.matchclaw/bridge.sh [--project-dir <path>]
 #
 # Requirements:
-#   - matchclaw CLI installed (npm install -g matchclaw-plugin)
+#   - plugin built (npm run build in agent/plugin/)
 #   - matchclaw setup completed
 #   - CLAUDE_PROJECT_DIR set or provided via --project-dir
 
@@ -44,6 +44,22 @@ if [[ -z "$WORK_DIR" ]]; then
   echo "ERROR: set CLAUDE_PROJECT_DIR or pass --project-dir <path>" >&2
   exit 1
 fi
+
+# Verify required commands are available before doing anything
+for cmd in node claude matchclaw; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "ERROR: '$cmd' not found in PATH" >&2
+    case "$cmd" in
+      matchclaw) echo "  Run: npm install -g matchclaw-plugin" >&2 ;;
+      claude)    echo "  Install Claude Code: https://claude.ai/code" >&2 ;;
+      node)      echo "  Install Node.js 20+: https://nodejs.org" >&2 ;;
+    esac
+    exit 1
+  fi
+done
+
+# Ensure BASE_DIR exists before writing any files into it
+mkdir -p "$BASE_DIR"
 
 # Write the agent persona if it hasn't been created yet.
 # This file is appended to every headless Claude session as system context.
@@ -119,18 +135,12 @@ handle_message() {
   rm -f "$tmp_prompt"
 }
 
-# Locate poll.js bundled with the matchclaw CLI installation
-POLL_SCRIPT=""
-if command -v matchclaw &>/dev/null; then
-  MATCHCLAW_BIN="$(dirname "$(command -v matchclaw)")"
-  POLL_CANDIDATE="${MATCHCLAW_BIN}/../lib/node_modules/matchclaw-plugin/dist/poll.js"
-  if [[ -f "$POLL_CANDIDATE" ]]; then
-    POLL_SCRIPT="$POLL_CANDIDATE"
-  fi
-fi
+# Resolve poll.js relative to this script — it's always ../dist/poll.js
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+POLL_SCRIPT="${SCRIPT_DIR}/../dist/poll.js"
 
-if [[ -z "$POLL_SCRIPT" ]]; then
-  echo "ERROR: poll.js not found — install matchclaw-plugin (npm install -g matchclaw-plugin)" >&2
+if [[ ! -f "$POLL_SCRIPT" ]]; then
+  echo "ERROR: poll.js not found at ${POLL_SCRIPT} — run 'npm run build' in the plugin directory" >&2
   exit 1
 fi
 
