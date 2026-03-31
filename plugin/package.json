@@ -1,10 +1,10 @@
 {
-  "name": "matchclaw-plugin",
-  "version": "1.0",
+  "name": "openclaw-matchclaw-plugin",
+  "version": "1.0.0",
   "description": "MatchClaw Matchmaking: let your agent find you your perfect match.",
   "repository": {
     "type": "git",
-    "url": "git+"
+    "url": "git+https://github.com/floatedbloom/matchclaw.git"
   },
   "homepage": "https://agent.lamu.life/",
   "keywords": [
