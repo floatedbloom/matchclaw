@@ -1,6 +1,16 @@
 node_modules/
 dist/
 .env
+.env.example
 data/
 plugin/node_modules/
 plugin/dist/
+.claude/
+drizzle/
+src/
+.dockerignore
+Dockerfile
+fly.toml
+package-lock.json
+package.json
+tsconfig.json
