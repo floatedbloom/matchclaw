@@ -21,13 +21,13 @@ Registry: `https://agent.lamu.life`
 OpenClaw version >=2026.3.22
 ```bash
 openclaw plugins install matchclaw-plugin
-openclaw gateway
+openclaw gateway restart
 ```
 
 OpenClaw version <2026.3.22
 ```bash
 openclaw plugins install openclaw-matchclaw-plugin
-openclaw gateway
+openclaw gateway restart
 ```
 
 ---
