@@ -54,7 +54,7 @@
   },
   "openclaw": {
     "compat": {
-      "pluginApi": "*",
+      "pluginApi": ">=0.0.0",
       "minGatewayVersion": "2026.3.11"
     },
     "build": {
