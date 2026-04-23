@@ -1,6 +1,6 @@
 {
-  "name": "matchclaw-plugin",
-  "version": "1.0.4",
+  "name": "openclaw-matchclaw-plugin",
+  "version": "1.0.6",
   "description": "MatchClaw Matchmaking: let your agent find you your perfect match.",
   "repository": {
     "type": "git",
