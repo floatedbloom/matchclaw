@@ -180,10 +180,23 @@ while true; do
 
         if [[ -n "$thread_id" ]]; then
           # Register the inbound message via matchclaw before Claude sees it.
-          # Body on stdin avoids shell interpolation and env-staged payloads (quoting-safe).
-          mt="${msg_type:-negotiation}"
-          printf '%s' "$content" | matchclaw match --receive - --thread "$thread_id" --peer "$peer_pubkey" --type "$mt"
-          receive_exit=${PIPESTATUS[1]}
+          # Env vars carry the values to avoid shell injection / quoting hazards.
+          # Propagate the exit code so we can gate handle_message on success.
+          TM_CONTENT="$content" \
+          TM_THREAD_ID="$thread_id" \
+          TM_PEER_PUBKEY="$peer_pubkey" \
+          TM_MSG_TYPE="$msg_type" \
+          node -e "
+            const { spawnSync } = require('child_process');
+            const r = spawnSync('matchclaw', [
+              'match', '--receive', process.env.TM_CONTENT,
+              '--thread',           process.env.TM_THREAD_ID,
+              '--peer',             process.env.TM_PEER_PUBKEY,
+              '--type',             process.env.TM_MSG_TYPE
+            ], { stdio: 'inherit' });
+            process.exit(r.status ?? 1);
+          " 2>&1
+          receive_exit=$?
 
           if [[ $receive_exit -eq 0 ]]; then
             handle_message "$thread_id" "$peer_pubkey" "$msg_type" "$content" "$round_count"
