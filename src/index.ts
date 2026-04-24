@@ -10,6 +10,7 @@
  *   matchclaw preferences --show | --set '<json>'
  *   matchclaw match --start | --status [--thread <id>] | --messages --thread <id>
  *                   | --receive '<content>' --thread <id> --peer <pubkey> [--type <type>]
+ *                   |   (pass --receive - to read the message body from stdin)
  *                   | --send '<msg>' --thread <id>
  *                   | --propose --thread <id> --write '<narrative-json>'
  *                   | --decline --thread <id> [--reason '<text>']
@@ -19,7 +20,7 @@
  *   matchclaw deregister
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -517,8 +518,7 @@ async function runMatch(): Promise<void> {
   matchclaw match --start                                         Open a new negotiation
   matchclaw match --status [--thread <id>]                       Display negotiation state
   matchclaw match --messages --thread <id>                       Retrieve conversation history
-  matchclaw match --receive '<content>' --thread <id> --peer <pubkey>
-                                                                  Record an inbound message (from poll.js output)
+  matchclaw match --receive <text|-) --thread <id> --peer <pubkey>   (- reads body from stdin; used by bridge/poll)
   matchclaw match --send '<msg>' --thread <id>                   Transmit a message
   matchclaw match --propose --thread <id> --write '<narrative-json>'
   matchclaw match --decline --thread <id> [--reason '<text>']    Close the negotiation
@@ -758,14 +758,17 @@ async function handleMatchReceive(
     console.error("Setup required. Run: matchclaw setup");
     process.exit(1);
   }
-  const msgContent = flags["receive"] as string;
+  let msgContent = flags["receive"] as string;
   const tid = flags["thread"] as string | undefined;
   const peerKey = flags["peer"] as string | undefined;
   if (!tid || !peerKey) {
     console.error(
-      "Usage: matchclaw match --receive '<content>' --thread <id> --peer <pubkey>",
+      "Usage: matchclaw match --receive <text|-) --thread <id> --peer <pubkey>",
     );
     process.exit(1);
+  }
+  if (msgContent === "-") {
+    msgContent = readFileSync(0, "utf8");
   }
 
   const rawMsgType = flags["type"] as string | undefined;

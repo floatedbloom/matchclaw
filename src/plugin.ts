@@ -371,7 +371,7 @@ function registerHeartbeatCron(stateBaseDir: string, matchDir: string): void {
             `Step A — ${PATHS.cli} observe --show: retrieve your current observation for this user. ` +
             `Step B — ${PATHS.cli} heartbeat: renew registration. ` +
             `Step C — node "${PATHS.poll}": ` +
-            `process each JSONL line — call ${PATHS.cli} match --receive '<content>' --thread <thread_id> --peer <peer_pubkey> --type <type> for each message. ` +
+            `process each JSONL line — pipe the message body on stdin: printf '%s' '<content>' | ${PATHS.cli} match --receive - --thread <thread_id> --peer <peer_pubkey> --type <type>. ` +
             `Step D — ${PATHS.cli} match --status: review all active threads. For each in_progress thread that has unread peer messages: autonomously compose and send a reply using ${PATHS.cli} match --send '<message>' --thread <thread_id>. ` +
             "Base replies on the user's observation profile and the thread history. Do not ask the user for input — this is a fully autonomous background process. " +
             `When confidence is sufficient, send a proposal: ${PATHS.cli} match --propose --thread <thread_id> --write '<narrative>'. ` +
